@@ -3,113 +3,191 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Soul Radar iOS</title>
+    <title>Love Radar Turbo</title>
     <style>
-        :root { --neon: #00ff41; --love: #ff0055; --bg: #050505; }
-        body { margin: 0; background: var(--bg); color: var(--neon); font-family: 'Courier New', monospace; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; text-align: center; }
-        #radar { position: relative; width: 280px; height: 280px; border: 4px solid currentColor; border-radius: 50%; box-shadow: 0 0 20px rgba(0,255,65,0.2); }
-        #needle { position: absolute; width: 10px; height: 130px; background: currentColor; bottom: 50%; left: calc(50% - 5px); transform-origin: bottom center; z-index: 10; }
-        #deg { font-size: 5rem; font-weight: bold; margin: 10px; text-shadow: 0 0 10px currentColor; }
-        body.love-mode { color: var(--love); background: #1a0005; }
-        .heart { position: absolute; pointer-events: none; font-size: 90px; text-shadow: 0 0 30px var(--love); z-index: 100; animation: explode 1s forwards cubic-bezier(0.17, 0.89, 0.32, 1.49); }
-        @keyframes explode { 0% { transform: translate(-50%, -50%) scale(0); opacity: 1; } 100% { transform: translate(var(--tx), var(--ty)) scale(2.5); opacity: 0; } }
-        #overlay { position: fixed; inset: 0; background: #000; z-index: 1000; display: flex; align-items: center; justify-content: center; }
-        button { padding: 30px 40px; background: var(--neon); color: #000; font-size: 1.6rem; font-weight: bold; border: none; cursor: pointer; border-radius: 10px; }
+        :root {
+            --love-pink: #ff0055;
+            --love-glow: rgba(255, 0, 85, 0.6);
+            --bg-black: #050002;
+        }
+
+        body {
+            margin: 0; background: var(--bg-black); color: var(--love-pink);
+            font-family: 'Courier New', Courier, monospace;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100vh; overflow: hidden; touch-action: none;
+        }
+
+        /* Radar UI */
+        #radar-container {
+            position: relative; width: 300px; height: 300px;
+            border: 6px solid var(--love-pink); border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 0 40px var(--love-glow);
+            background: radial-gradient(circle, #300010 0%, #050002 100%);
+            transition: transform 0.3s ease;
+        }
+
+        #scanner-line {
+            position: absolute; width: 50%; height: 4px;
+            background: linear-gradient(to right, transparent, var(--love-pink));
+            top: 50%; left: 50%; transform-origin: left center;
+            z-index: 5; box-shadow: 0 0 15px var(--love-pink);
+        }
+
+        #degrees {
+            position: absolute; top: -70px; font-size: 5rem; font-weight: bold;
+            text-shadow: 0 0 20px var(--love-pink);
+        }
+
+        /* Scarica di Cuori Giganti */
+        .heart {
+            position: absolute; pointer-events: none; z-index: 100;
+            font-size: 80px; /* Cuori molto più grandi */
+            filter: drop-shadow(0 0 20px var(--love-pink));
+            animation: fly-up 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+        }
+
+        @keyframes fly-up {
+            0% { transform: translate(-50%, 0) scale(0.5); opacity: 0; bottom: 10%; }
+            20% { opacity: 1; scale: 1.2; }
+            100% { transform: translate(-50%, -100vh) scale(2.5); opacity: 0; bottom: 100%; }
+        }
+
+        /* Overlay */
+        #overlay {
+            position: fixed; inset: 0; background: #000;
+            z-index: 1000; display: flex; align-items: center; justify-content: center;
+        }
+
+        button {
+            background: transparent; border: 4px solid var(--love-pink);
+            color: var(--love-pink); padding: 25px 50px;
+            font-size: 1.8rem; font-weight: bold; border-radius: 60px;
+            cursor: pointer; box-shadow: 0 0 30px var(--love-glow);
+            text-transform: uppercase;
+        }
+
+        #label { margin-top: 50px; letter-spacing: 5px; font-weight: bold; font-size: 1.2rem; }
     </style>
 </head>
-<body id="main-body" onclick="lockTarget()">
+<body onclick="resetRadar()">
 
     <div id="overlay">
-        <button onclick="unlockSafari()">AVVIA RADAR (iOS)</button>
+        <button onclick="init()">START LOVE RADAR</button>
     </div>
 
-    <div id="deg">000°</div>
-    <div id="radar"><div id="needle"></div></div>
-    <div id="status" style="margin-top: 20px; letter-spacing: 3px;">SCANNING...</div>
+    <div id="degrees">000°</div>
+    
+    <div id="radar-container" id="radar">
+        <div id="scanner-line" id="line"></div>
+    </div>
+    
+    <div id="label">SCANNING FOR LOVE...</div>
 
     <script>
-        let audioCtx, isLocked = false, intensity = 0, nextBeep = 0, currentAngle = 0;
+        let audioCtx, nextBeepTime = 0, beepFrequency = 0;
+        let currentHeading = 0;
+        let isActive = false;
 
-        function unlockSafari() {
-            // 1. Inizializza Audio
+        async function init() {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             
-            // 2. Richiedi Permessi Sensori (Solo iOS richiede questo passo)
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission()
-                    .then(response => {
-                        if (response == 'granted') {
-                            startTracking();
-                        } else {
-                            alert("Senza permessi la bussola non funzionerà!");
-                        }
-                    })
-                    .catch(console.error);
+                const res = await DeviceOrientationEvent.requestPermission();
+                if (res === 'granted') start();
             } else {
-                // Per browser che non richiedono permessi (o se sei su Android)
-                startTracking();
+                start();
             }
         }
 
-        function startTracking() {
+        function start() {
             document.getElementById('overlay').style.display = 'none';
-
+            isActive = true;
+            
             window.addEventListener('deviceorientation', (e) => {
-                // webkitCompassHeading è la chiave magica per Safari
-                let heading = e.webkitCompassHeading || e.alpha;
+                if (!isActive) return;
 
-                if (heading !== null && !isLocked) {
-                    currentAngle = heading;
-                    document.getElementById('needle').style.transform = `rotate(${currentAngle}deg)`;
-                    document.getElementById('deg').innerText = Math.floor(currentAngle).toString().padStart(3, '0') + "°";
+                let heading = e.webkitCompassHeading || (360 - e.alpha);
+                if (heading) {
+                    currentHeading = heading;
+                    document.getElementById('scanner-line').style.transform = `rotate(${heading - 90}deg)`;
+                    document.getElementById('degrees').innerText = Math.floor(heading).toString().padStart(3, '0') + "°";
                 }
 
-                // Inclinazione (Beta) per far battere il cuore e generare cuori
-                let beta = Math.abs(e.beta || 0);
-                intensity = Math.max(0, Math.min(100, (beta - 20) * 3));
+                let tilt = Math.abs(e.beta); 
+                // Se il telefono è piatto (tilt < 35), scarica di beep e cuori
+                if (tilt < 35) {
+                    beepFrequency = Math.max(0, (35 - tilt) / 4); 
+                } else {
+                    beepFrequency = 0;
+                }
             }, true);
 
-            requestAnimationFrame(engine);
+            requestAnimationFrame(mainLoop);
         }
 
-        function lockTarget() {
-            if (!audioCtx || isLocked) return;
-            isLocked = true;
-            document.getElementById('main-body').classList.add('love-mode');
-            document.getElementById('status').innerText = "TARGET LOCKED";
+        function resetRadar() {
+            if (!isActive) return;
+            
+            // Effetto visivo di reset
+            const container = document.getElementById('radar-container');
+            container.style.transform = "scale(0.9)";
+            setTimeout(() => container.style.transform = "scale(1)", 150);
+
+            // Reset dati
+            document.getElementById('degrees').innerText = "000°";
+            document.getElementById('label').innerText = "RADAR RESET...";
+            setTimeout(() => {
+                document.getElementById('label').innerText = "SCANNING FOR LOVE...";
+            }, 1000);
         }
 
-        function engine() {
-            let now = audioCtx ? audioCtx.currentTime : 0;
-            if (isLocked && intensity > 10 && now > nextBeep) {
+        function mainLoop() {
+            let now = audioCtx.currentTime;
+
+            if (isActive && beepFrequency > 0.5 && now > nextBeepTime) {
                 playBeep(now);
-                nextBeep = now + (0.7 - (intensity / 100) * 0.65);
                 
-                // Genera cuori giganti proporzionali all'intensità
-                let count = Math.floor(intensity / 15);
-                for(let i=0; i<count; i++) spawnHeart();
+                // Scarica di cuori: ne creiamo 3 ogni beep per l'effetto "esplosione"
+                spawnHeart();
+                spawnHeart();
+                spawnHeart();
+
+                let interval = 0.8 / (beepFrequency + 0.5); 
+                nextBeepTime = now + Math.max(0.08, interval);
             }
-            requestAnimationFrame(engine);
+            requestAnimationFrame(mainLoop);
         }
 
         function spawnHeart() {
             const h = document.createElement('div');
-            h.className = 'heart'; h.innerHTML = '❤';
-            h.style.left = '50%'; h.style.top = '50%';
-            h.style.setProperty('--tx', (Math.random() * 800 - 400) + 'px');
-            h.style.setProperty('--ty', (Math.random() * -1000 + 200) + 'px');
+            h.className = 'heart';
+            h.innerHTML = '❤️';
+            // Posizionamento casuale sul fondo
+            h.style.left = (Math.random() * 100) + '%';
+            // Leggera variazione di dimensione per ogni cuore
+            const size = 40 + Math.random() * 60;
+            h.style.fontSize = size + 'px';
+            
             document.body.appendChild(h);
-            setTimeout(() => h.remove(), 1000);
+            setTimeout(() => h.remove(), 1200);
         }
 
         function playBeep(t) {
-            let osc = audioCtx.createOscillator(), g = audioCtx.createGain();
-            osc.connect(g); g.connect(audioCtx.destination);
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(800 + (intensity * 4), t);
-            g.gain.setValueAtTime(0.1, t);
-            g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
-            osc.start(t); osc.stop(t + 0.1);
+            let osc = audioCtx.createOscillator();
+            let gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(1000 + (beepFrequency * 50), t); 
+            
+            gain.gain.setValueAtTime(0.3, t);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+            
+            osc.start(t);
+            osc.stop(t + 0.1);
         }
     </script>
 </body>
