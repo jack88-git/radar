@@ -3,108 +3,114 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Bussola Pura</title>
+    <title>Soul Radar iOS</title>
     <style>
-        body { margin: 0; background: #000; color: #00ff41; font-family: monospace; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
-        #radar { position: relative; width: 300px; height: 300px; border: 4px solid currentColor; border-radius: 50%; }
-        #needle { position: absolute; width: 8px; height: 140px; background: currentColor; bottom: 50%; left: calc(50% - 4px); transform-origin: bottom center; transition: transform 0.1s linear; }
-        #deg { font-size: 5rem; font-weight: bold; margin-bottom: 10px; }
-        body.love { color: #ff0055; background: #1a0005; }
-        .heart { position: absolute; pointer-events: none; font-size: 80px; text-shadow: 0 0 30px #ff0055; animation: exp 1s forwards; z-index: 100; }
-        @keyframes exp { 0% { transform: translate(-50%,-50%) scale(0); opacity: 1; } 100% { transform: translate(var(--tx), var(--ty)) scale(2.5); opacity: 0; } }
+        :root { --neon: #00ff41; --love: #ff0055; --bg: #050505; }
+        body { margin: 0; background: var(--bg); color: var(--neon); font-family: 'Courier New', monospace; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; text-align: center; }
+        #radar { position: relative; width: 280px; height: 280px; border: 4px solid currentColor; border-radius: 50%; box-shadow: 0 0 20px rgba(0,255,65,0.2); }
+        #needle { position: absolute; width: 10px; height: 130px; background: currentColor; bottom: 50%; left: calc(50% - 5px); transform-origin: bottom center; z-index: 10; }
+        #deg { font-size: 5rem; font-weight: bold; margin: 10px; text-shadow: 0 0 10px currentColor; }
+        body.love-mode { color: var(--love); background: #1a0005; }
+        .heart { position: absolute; pointer-events: none; font-size: 90px; text-shadow: 0 0 30px var(--love); z-index: 100; animation: explode 1s forwards cubic-bezier(0.17, 0.89, 0.32, 1.49); }
+        @keyframes explode { 0% { transform: translate(-50%, -50%) scale(0); opacity: 1; } 100% { transform: translate(var(--tx), var(--ty)) scale(2.5); opacity: 0; } }
         #overlay { position: fixed; inset: 0; background: #000; z-index: 1000; display: flex; align-items: center; justify-content: center; }
-        button { padding: 30px; background: none; border: 4px solid #00ff41; color: #00ff41; font-size: 1.5rem; font-family: monospace; cursor: pointer; }
+        button { padding: 30px 40px; background: var(--neon); color: #000; font-size: 1.6rem; font-weight: bold; border: none; cursor: pointer; border-radius: 10px; }
     </style>
 </head>
-<body id="b">
+<body id="main-body" onclick="lockTarget()">
 
     <div id="overlay">
-        <button onclick="attiva()">ATTIVA BUSSOLA</button>
+        <button onclick="unlockSafari()">AVVIA RADAR (iOS)</button>
     </div>
 
     <div id="deg">000°</div>
     <div id="radar"><div id="needle"></div></div>
-    <div id="info" style="margin-top: 20px;">PUNTA IL TARGET</div>
+    <div id="status" style="margin-top: 20px; letter-spacing: 3px;">SCANNING...</div>
 
-<script>
-    let isLocked = false, angle = 0, audioCtx, nextBeep = 0, intensity = 0;
+    <script>
+        let audioCtx, isLocked = false, intensity = 0, nextBeep = 0, currentAngle = 0;
 
-    async function attiva() {
-        // Blocco Audio
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        
-        // Gestione Permessi iOS
-        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-            const res = await DeviceOrientationEvent.requestPermission();
-            if (res === 'granted') sbloccaBussola();
-        } else {
-            sbloccaBussola();
-        }
-        document.getElementById('overlay').style.display = 'none';
-    }
-
-    function sbloccaBussola() {
-        // Usiamo l'evento ABSOLUTE per Android, quello standard per iOS
-        const evName = ('ondeviceorientationabsolute' in window) ? 'deviceorientationabsolute' : 'deviceorientation';
-        
-        window.addEventListener(evName, (e) => {
-            let heading = 0;
-
-            if (e.webkitCompassHeading) {
-                // Caso iOS
-                heading = e.webkitCompassHeading;
-            } else if (e.alpha !== null) {
-                // Caso Android: usiamo il magnetometro assoluto
-                heading = e.absolute ? e.alpha : 360 - e.alpha;
-            }
-
-            if (!isLocked) {
-                angle = heading;
-                document.getElementById('needle').style.transform = `rotate(${angle}deg)`;
-                document.getElementById('deg').innerText = Math.floor(angle).toString().padStart(3, '0') + "°";
-            }
-
-            // Inclinazione per Beep e Cuori
-            let pitch = Math.abs(e.beta || 0);
-            intensity = Math.max(0, Math.min(100, (pitch - 20) * 3));
-        }, true);
-
-        requestAnimationFrame(loop);
-    }
-
-    document.body.onclick = () => {
-        if (!audioCtx || isLocked) return;
-        isLocked = true;
-        document.getElementById('b').className = 'love';
-        document.getElementById('info').innerText = "TARGET BLOCCATO";
-    };
-
-    function loop() {
-        let now = audioCtx ? audioCtx.currentTime : 0;
-        if (isLocked && intensity > 10 && now > nextBeep) {
-            playBeep(now);
-            nextBeep = now + (0.7 - (intensity / 100) * 0.65);
-            // Spara cuori giganti
-            for (let i = 0; i < Math.floor(intensity / 15); i++) {
-                const h = document.createElement('div');
-                h.className = 'heart'; h.innerHTML = '❤';
-                h.style.left = '50%'; h.style.top = '50%';
-                h.style.setProperty('--tx', (Math.random() * 800 - 400) + 'px');
-                h.style.setProperty('--ty', (Math.random() * -800 + 200) + 'px');
-                document.getElementById('b').appendChild(h);
-                setTimeout(() => h.remove(), 1000);
+        function unlockSafari() {
+            // 1. Inizializza Audio
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // 2. Richiedi Permessi Sensori (Solo iOS richiede questo passo)
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(response => {
+                        if (response == 'granted') {
+                            startTracking();
+                        } else {
+                            alert("Senza permessi la bussola non funzionerà!");
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                // Per browser che non richiedono permessi (o se sei su Android)
+                startTracking();
             }
         }
-        requestAnimationFrame(loop);
-    }
 
-    function playBeep(t) {
-        let o = audioCtx.createOscillator(), g = audioCtx.createGain();
-        o.connect(g); g.connect(audioCtx.destination);
-        o.type = 'square'; o.frequency.setValueAtTime(850 + (intensity * 4), t);
-        g.gain.setValueAtTime(0.1, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
-        o.start(t); o.stop(t + 0.1);
-    }
-</script>
+        function startTracking() {
+            document.getElementById('overlay').style.display = 'none';
+
+            window.addEventListener('deviceorientation', (e) => {
+                // webkitCompassHeading è la chiave magica per Safari
+                let heading = e.webkitCompassHeading || e.alpha;
+
+                if (heading !== null && !isLocked) {
+                    currentAngle = heading;
+                    document.getElementById('needle').style.transform = `rotate(${currentAngle}deg)`;
+                    document.getElementById('deg').innerText = Math.floor(currentAngle).toString().padStart(3, '0') + "°";
+                }
+
+                // Inclinazione (Beta) per far battere il cuore e generare cuori
+                let beta = Math.abs(e.beta || 0);
+                intensity = Math.max(0, Math.min(100, (beta - 20) * 3));
+            }, true);
+
+            requestAnimationFrame(engine);
+        }
+
+        function lockTarget() {
+            if (!audioCtx || isLocked) return;
+            isLocked = true;
+            document.getElementById('main-body').classList.add('love-mode');
+            document.getElementById('status').innerText = "TARGET LOCKED";
+        }
+
+        function engine() {
+            let now = audioCtx ? audioCtx.currentTime : 0;
+            if (isLocked && intensity > 10 && now > nextBeep) {
+                playBeep(now);
+                nextBeep = now + (0.7 - (intensity / 100) * 0.65);
+                
+                // Genera cuori giganti proporzionali all'intensità
+                let count = Math.floor(intensity / 15);
+                for(let i=0; i<count; i++) spawnHeart();
+            }
+            requestAnimationFrame(engine);
+        }
+
+        function spawnHeart() {
+            const h = document.createElement('div');
+            h.className = 'heart'; h.innerHTML = '❤';
+            h.style.left = '50%'; h.style.top = '50%';
+            h.style.setProperty('--tx', (Math.random() * 800 - 400) + 'px');
+            h.style.setProperty('--ty', (Math.random() * -1000 + 200) + 'px');
+            document.body.appendChild(h);
+            setTimeout(() => h.remove(), 1000);
+        }
+
+        function playBeep(t) {
+            let osc = audioCtx.createOscillator(), g = audioCtx.createGain();
+            osc.connect(g); g.connect(audioCtx.destination);
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(800 + (intensity * 4), t);
+            g.gain.setValueAtTime(0.1, t);
+            g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+            osc.start(t); osc.stop(t + 0.1);
+        }
+    </script>
 </body>
 </html>
